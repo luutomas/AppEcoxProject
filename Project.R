@@ -1,0 +1,217 @@
+#install.packages('devtools')
+#install.packages("quantmod")
+#install.packages("fGarch")
+#install.packages("repr")
+#install.packages("forecast")
+#install.packages("aTSA")
+#install.packages("rugarch") 
+#install.packages("tseries")
+
+library(quantmod)
+library(fGarch)
+library(repr)
+library(forecast)
+library(aTSA)
+library(rugarch)
+library(tseries)
+library(MLmetrics)
+
+custom_ARIMA <- function(dat,max_p,max_q, d, const){
+  model_config <-c()
+  model_AIC <-c()
+  model_BIC <-c()
+  Ljung_Box_pval <-c()
+  RMSE <- c()
+  for (i in 1:(max_p+1)){
+    for (j in 1:(max_q+1)){
+      arima<- tryCatch(Arima(dat,  # variable
+                             order = c(i-1,d,j-1),  # (p,d,q) parameters
+                             include.constant = const),
+                       warning = function(w) {print(paste("non-finite finite-difference value", ''));
+                         NaN},
+                       error = function(e) {print(paste("non-finite finite-difference value", ''));
+                         NaN})
+      
+      if (!is.numeric(arima)){
+        model_config <-c(model_config, 
+                         paste(i-1,d,j-1,sep=',')
+        )
+        model_AIC <- c(model_AIC, (AIC(arima)))
+        model_BIC <- c(model_BIC, (BIC(arima)))
+        Ljung_Box_pval <-c(Ljung_Box_pval,(as.numeric(sub(".*p-value = ","", 
+                                                          capture.output(checkresiduals(arima, plot=FALSE)[5]))[5])))
+        RMSE_tmp <-round(sqrt(mean((as.vector(arima$fitted) - as.vector(dat))^2)),1)
+        RMSE <- c(RMSE, RMSE_tmp)
+      }
+    }
+  }
+  df <- as.data.frame(cbind(model_config, 
+                            model_AIC,
+                            as.numeric(as.character(model_BIC)),
+                            as.numeric(as.character(Ljung_Box_pval)),
+                            RMSE))
+  names(df) <- c('model_config','model_AIC','model_BIC','Ljung_Box_pval','RMSE')
+  df$model_config <- as.character(df$model_config)
+  df$model_AIC <- as.numeric(as.character(df$model_AIC))
+  df$model_BIC <- as.numeric(as.character(df$model_BIC))
+  df$Ljung_Box_pval <- as.numeric(as.character(df$Ljung_Box_pval))
+  return(df)
+}
+
+custom_ARIMA_results <- custom_ARIMA(BABA_logret, 10, 10, 0, FALSE)
+
+
+##### Getting the stock data for the chosen stock ####
+getSymbols('BABA', src = 'yahoo', return.class = 'xts',from = "2014-09-20",to="2019-12-31")
+head(BABA)
+BABA <- BABA[,"BABA.Close"]
+plot.xts(BABA, ylab = NA) #clearly non-stationary
+
+BABA_logret <- na.omit(diff(log(BABA)))
+
+plot.xts(BABA_logret, ylab = NA)
+hist(BABA_logret,freq=FALSE,breaks=100)
+curve(dnorm(x, mean=mean(BABA_logret), sd=sd(BABA_logret)), add=TRUE, col="red") #seems stationary
+
+adf <- data.frame("lags"=1:10,"p-val"=NA)
+for (i in 1:10){
+  adf[i,"p.val"] =as.numeric(adf.test(BABA_logret, k = i)$p.val)  
+}
+adf #all lags below confidence level, seems stationary
+
+#examining ACF and PACF
+par(mfrow = c(2, 1))
+acf(BABA_logret)
+pacf(BABA_logret)
+par(mfrow = c(1,1))
+
+# testing joint significance of lags
+LB <- data.frame("lags"=1:10,"p-val"=NA)
+for (i in 1:10){
+  LB[i,"p.val"] =Box.test(BABA_logret, type = "Ljung-Box", lag = i)$p.val
+}
+LB
+# null hypothesis of autocorrelations up to lag k equal zero is very likely to be rjected as shown by LB text
+# From ACF and PACF, LB test, it appears that there is a dependence on lags in both subsamples => proceed to GARCH
+# Unfortunately from ACF and PACF, it is unclear which order of AR or MA should we choose
+# To address this issue, we will use find the minimzed AIC and BIC
+
+custom_ARIMA_results <- custom_ARIMA(BABA_logret, 10, 10, 0, FALSE)
+
+head(custom_ARIMA_results[order(custom_ARIMA_results$model_AIC),],5)
+head(custom_ARIMA_results[order(custom_ARIMA_results$model_BIC),],5)
+
+auto.arima(BABA_logret,ic ="aic", stepwise = FALSE) # We also used out-of-the-box function, which finds the best order by minimizing information criterion
+
+arima202 <- arima(BABA_logret, order = c(2,0,2))
+arima202
+arch.test(arima202)
+# Homoskedastic residuals rejected => focus on conditional volatility => GARCH family models
+
+#### Conditional Volatility ####
+# We start with ARMA(2,0,2) - GARCH(1,1)
+# Save last 183 observations (6 months) for out of sample forecasting
+arma202_garch11_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
+                                  variance.model = list(model = "sGARCH", garchOrder = c(1, 1))
+                                  )
+arma202_garch11= ugarchfit(arma202_garch11_spec, BABA_logret, out.sample = 183)
+arma202_garch11
+# From the results, we can see that all coefficients except mean are significant 
+# and null hypothesis of no autocorrelation can not be rejected (LB test)
+
+# Testing normality 
+jarque.bera.test(residuals(arma202_garch11))
+par(mfrow = c(1, 2))
+hist(residuals(arma202_garch11), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma202_garch11), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma202_garch11), lwd = 2)
+par(mfrow = c(1, 2))
+# Residuals do not eappear to be normally distributed, lets fit residuals having students t-distribution
+
+arma202_garch11_t_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
+                                    variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+                                    distribution.model = 'std')
+arma202_garch11_t= ugarchfit(arma202_garch11_t_spec, BABA_logret, out.sample = 183)
+arma202_garch11_t
+
+jarque.bera.test(residuals(arma202_garch11_t))
+
+par(mfrow = c(1, 2))
+hist(residuals(arma202_garch11_t), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma202_garch11_t), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma202_garch11_t), lwd = 2)
+
+##### Vůbec to nepomohlo? Smazat? #####
+
+# Lets try to fit models from GARCH family that account for asymmetric responses, namely EGARCH and GJRGARCH
+# ARMA(2,0,2)  EGARCH(1,1)
+arma202_egarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                    variance.model = list(model = "eGARCH",
+                                    garchOrder = c(1, 1))
+                                    )
+
+arma202_egarch11 = ugarchfit(arma202_egarch11_spec, BABA_logret, out.sample = 183)
+arma202_egarch11
+
+arma202_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
+                                      variance.model = list(model = "gjrGARCH", 
+                                      garchOrder = c(1, 1)))
+
+arma202_gjrgarch11 = ugarchfit(arma202_gjrgarch11_spec, BABA_logret, out.sample = 183)
+arma202_gjrgarch11
+
+####  Ještě zkusit jiné? EWMA ####
+# Lets compare coefficients from all models
+coefficients <- cbind(coef(arma202_garch11),
+                      coef(arma202_egarch11),
+                      coef(arma202_gjrgarch11))
+
+colnames(coefficients) <- c("ARMA(2,0,2)-GARCH(1,1)","ARMA(2,0,2)-EGARCH(1,1)","ARMA(2,0,2)-GJRGARCH(1,1)")
+coefficients
+# Check which model performs the best according to AIC
+
+##### Možná srovnat i jinak? Jiné kritéria, možné RMSE ####
+performance <- cbind(c(infocriteria(arma202_garch11)["Akaike",],
+                       infocriteria(arma202_egarch11)["Akaike",],
+                       infocriteria(arma202_gjrgarch11)["Akaike",]))
+rownames(performance) <- c("ARMA(2,0,2)-GARCH(1,1)","ARMA(2,0,2)-EGARCH(1,1)","ARMA(2,0,2)-GJRGARCH(1,1)")
+performance
+
+# Dynamic forecast and set the forecast horizon to 6 months
+forecast_arma202_garch11 = ugarchforecast(arma202_garch11, n.ahead = 1, n.roll = 183)
+forecast_arma202_egarch11 = ugarchforecast(arma202_egarch11, n.ahead = 1, n.roll = 183)
+forecast_arma202_gjrgarch11 = ugarchforecast(arma202_gjrgarch11, n.ahead = 1, n.roll = 183)
+
+par(mfrow = c(1, 1))
+plot.ts(arma202_garch11@fit$sigma, ylab = NA, xlim = c(0, length(BABA_logret)), main = 'Volatility forecasts')
+lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_garch11@forecast$sigma), col = 'red')
+lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_egarch11@forecast$sigma), col = 'blue')
+lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_gjrgarch11@forecast$sigma), col = 'orange')
+
+# from the graphs we can see that they produce similar predictions, lets examine MSE
+
+# Bind the prediction vectors
+predictions  <- cbind(forecast_arma202_garch11@forecast$sigmaFor[1:183],
+                      forecast_arma202_egarch11@forecast$sigmaFor[1:183],
+                      forecast_arma202_gjrgarch11@forecast$sigmaFor[1:183])
+
+# Calculate volatility proxy
+vol <- (tail(BABA_logret,183))^2
+
+# Proceeds to MSE
+MSE_results <- cbind(MSE(y_pred = predictions[1], y_true = vol),
+                     MSE(y_pred = predictions[2], y_true = vol),
+                     MSE(y_pred = predictions[3], y_true = vol))
+
+
+colnames(MSE_results) <- c('ARMA(2,0,2)-GARCH(1,1)',
+                           'ARMA(2,0,2)-eGARCH(1,1)',
+                           'ARMA(2,0,2)-gjrGARCH(1,1)')
+
+MSE_results
+
+# ARMA(2,0,2)-gjrGARCH(1,1) appears to perfor best in terms of mean squared error
