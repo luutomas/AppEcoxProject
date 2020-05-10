@@ -100,24 +100,69 @@ custom_ARIMA_results <- custom_ARIMA(BABA_logret, 10, 10, 0, FALSE)
 
 head(custom_ARIMA_results[order(custom_ARIMA_results$model_AIC),],5)
 head(custom_ARIMA_results[order(custom_ARIMA_results$model_BIC),],5)
+# AIC (2,0,2), BIC (0,0,0)
 
-auto.arima(BABA_logret,ic ="aic", stepwise = FALSE) # We also used out-of-the-box function, which finds the best order by minimizing information criterion
+auto.arima(BABA_logret,ic ="aic", stepwise = FALSE)
+auto.arima(BABA_logret,ic ="bic", stepwise = FALSE)
+# We also used out-of-the-box function, which finds the best order by minimizing information criterion
+# AIC (2,0,3), BIC (0,0,0)
 
 arima202 <- arima(BABA_logret, order = c(2,0,2))
-arima202
-arch.test(arima202)
+checkresiduals(arima202)
+arch.test(arima203)
+
+arima203 <- arima(BABA_logret, order = c(2,0,3))
+checkresiduals(arima203)
+arch.test(arima203)
+
 # Homoskedastic residuals rejected => focus on conditional volatility => GARCH family models
 
 #### Conditional Volatility ####
 # We start with ARMA(2,0,2) - GARCH(1,1)
 # Save last 183 observations (6 months) for out of sample forecasting
+
+
+
+
+
+
+
+
 arma202_garch11_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
-                                  variance.model = list(model = "sGARCH", garchOrder = c(1, 1))
+                                  variance.model = list(garchOrder = c(1, 1))
                                   )
-arma202_garch11= ugarchfit(arma202_garch11_spec, BABA_logret, out.sample = 183)
-arma202_garch11
+(arma202_garch11 = ugarchfit(spec = arma202_garch11_spec, data = BABA_logret, out.sample = 183))
+(arma202_garch11_res = ugarchfit(spec = arma202_garch11_spec, data = resid(arima202), out.sample = 183))
 # From the results, we can see that all coefficients except mean are significant 
 # and null hypothesis of no autocorrelation can not be rejected (LB test)
+
+bestGARCH <- function(arima_model) {
+  p.max <- 5
+  q.max <- 5
+  aic.min <- Inf
+  best.p <- 0
+  best.q <- 0
+  for (i1 in 1:p.max) {
+    for (i2 in 1:q.max) {
+      ourSpec <-
+        ugarchspec(
+          mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+          variance.model = list(garchOrder = c(i1, i2))
+        )
+      fit <- ugarchfit(spec = ourSpec, data = resid(arima_model))
+      inf.crit <- infocriteria(fit)[1]
+      aic.min <- ifelse(inf.crit < aic.min, inf.crit, aic.min)
+      
+      best.p <- ifelse(inf.crit == aic.min, i1, best.p)
+      best.q <- ifelse(inf.crit == aic.min, i2, best.q)
+    }
+  }
+  return(c(best.p, best.q))
+}
+print(bestGARCH(arima202))
+
+
+
 
 # Testing normality 
 jarque.bera.test(residuals(arma202_garch11))
