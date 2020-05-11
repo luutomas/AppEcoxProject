@@ -87,7 +87,6 @@ acf(BABA_logret)
 pacf(BABA_logret)
 par(mfrow = c(1,1))
 
-randomNormTS <- rnorm(100)
 Box.test(randomNormTS, type = "Ljung")
 # testing joint significance of lags
 LB <- data.frame("lags"=1:10,"p-val"=NA)
@@ -124,16 +123,20 @@ arch.test(arima203)
 #### Conditional Volatility ####
 # We start with ARMA(2,0,2) - GARCH(1,1)
 # Save last 183 observations (6 months) for out of sample forecasting
-arma202_garch11_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
-                                  variance.model = list(garchOrder = c(1, 1))
-                                  )
-arma202_garch11 = ugarchfit(spec = arma202_garch11_spec, data = BABA_logret, out.sample = 183, solver = "hybrid")
-(arma202_garch11_res = ugarchfit(spec = arma202_garch11_spec, data = resid(arima202), out.sample = 183))
-infocriteria(arma202_garch11)
+arma202_garch11_spec = ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                  variance.model = list(garchOrder = c(1, 1)))
+arma202_garch11 = ugarchfit(
+  spec = arma202_garch11_spec,
+  data = residuals(arima202),
+  out.sample = 183,
+  solver = "hybrid"
+)
+print(arma202_garch11)
+infocriteria(arma202_garch11)[2]
 # From the results, we can see that all coefficients except mean are significant 
 # and null hypothesis of no autocorrelation can not be rejected (LB test)
 
-bestGARCH <- function(arima_model) {
+bestGARCH_AIC <- function(arima_model) {
   p.max <- 5
   q.max <- 5
   aic.min <- Inf
@@ -157,11 +160,35 @@ bestGARCH <- function(arima_model) {
   }
   return(c(best.p, best.q))
 }
-print(bestGARCH(arima202))
+print(bestGARCH_AIC(arima203))
+print(bestGARCH_AIC(arima202))
 
-test_spec <- ugarchspec(mean.model = list(armaOrder=c(0, 0)), 
-                        variance.model = list(garchOrder = c(1, 1))
-)
+bestGARCH_BIC <- function(arima_model) {
+  p.max <- 5
+  q.max <- 5
+  bic.min <- Inf
+  best.p <- 0
+  best.q <- 0
+  inf.crit <- 0
+  for (i1 in 1:p.max) {
+    for (i2 in 1:q.max) {
+      ourSpec <-
+        ugarchspec(
+          mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+          variance.model = list(garchOrder = c(i1, i2))
+        )
+      fit <- ugarchfit(spec = ourSpec, data = resid(arima_model), solver = "hybrid")
+      inf.crit <- infocriteria(fit)[2]
+      bic.min <- ifelse(inf.crit < bic.min, inf.crit, bic.min)
+      
+      best.p <- ifelse(inf.crit == bic.min, i1, best.p)
+      best.q <- ifelse(inf.crit == bic.min, i2, best.q)
+    }
+  }
+  return(c(best.p, best.q))
+}
+print(bestGARCH_BIC(arima203))
+print(bestGARCH_BIC(arima202))
 
 bestGARCHcombined <- function(ts_data) {
   ap.max <- 5
@@ -195,9 +222,18 @@ bestGARCHcombined <- function(ts_data) {
   }
   return(c(best.p, best.q))
 }
-
 print(bestGARCHcombined(BABA_logret))
 
+arma202_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                  variance.model = list(garchOrder = c(1, 1)))
+arma202_garch11 <- ugarchfit(spec = arma202_garch11_spec, data = residuals(arima202),
+                             out.sample = 183,solver = "hybrid")
+print(arma202_garch11)
+arma202_garch11_res <- residuals(arma202_garch11)
+acf(arma202_garch11_res)
+plot(arma202_garch11_res)
+Box.test(arma202_garch11_res)
+hist(arma202_garch11_res)
 
 # Testing normality 
 jarque.bera.test(residuals(arma202_garch11))
