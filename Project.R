@@ -238,10 +238,10 @@ bestGJRGARCH_BIC <- function(arima_model) {
   return(c(best.p, best.q))
 }
 
-#print(bestGJRGARCH_AIC(arima203))
-#print(bestGJRGARCH_AIC(arima202))
-#print(bestGJRGARCH_BIC(arima203))
-#print(bestGJRGARCH_BIC(arima202))
+#print(bestGJRGARCH_AIC(arima203)) (1,4)
+#print(bestGJRGARCH_AIC(arima202)) (1,4)
+#print(bestGJRGARCH_BIC(arima203)) (1,1)
+#print(bestGJRGARCH_BIC(arima202)) (1,1)
 
 # We got that the best GARCH values are (1,1) and (1,4)
 bestARMA_GARCH_AIC <- function(ts_data) {
@@ -446,48 +446,66 @@ bestARMA_eGARCH_BIC(BABA_logret) # 4 3 4 3
 #
 arma202_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                   variance.model = list(garchOrder = c(1, 1)))
-arma202_garch11 <- ugarchfit(spec = arma202_garch11_spec, data = residuals(arima202),
+arma202_garch11 <- ugarchfit(spec = arma202_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma202_garch11))
+jarque.bera.test(residuals(arma202_garch11))
 
 arma202_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                    variance.model = list(garchOrder = c(1, 4)))
-arma202_garch14 <- ugarchfit(spec = arma202_garch14_spec, data = residuals(arima202),
+arma202_garch14 <- ugarchfit(spec = arma202_garch14_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma202_garch14))
+jarque.bera.test(residuals(arma202_garch14))
 
 arma000_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 1)))
-arma000_garch11 <- ugarchfit(spec = arma000_garch11_spec, data = residuals(arima000),
+arma000_garch11 <- ugarchfit(spec = arma000_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma000_garch11))
+jarque.bera.test(residuals(arma000_garch11))
 
 arma000_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 4)))
-arma000_garch14 <- ugarchfit(spec = arma000_garch14_spec, data = residuals(arima000),
+arma000_garch14 <- ugarchfit(spec = arma000_garch14_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma000_garch14))
+jarque.bera.test(residuals(arma000_garch14))
 
 arma105_garch15_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 5)),
                                    variance.model = list(garchOrder = c(1, 5)))
 arma105_garch15 <- ugarchfit(spec = arma105_garch15_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma105_garch15))
+jarque.bera.test(residuals(arma105_garch15))
 
 arma101_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                    variance.model = list(garchOrder = c(1, 1)))
 arma101_garch11 <- ugarchfit(spec = arma101_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
+Box.test(residuals(arma101_garch11))
+jarque.bera.test(residuals(arma101_garch11))
 
 arma101_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                       variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
 arma101_gjrgarch11 <- ugarchfit(spec = arma101_gjrgarch11_spec, data = BABA_logret,
                              out.sample = 183)
+Box.test(residuals(arma101_gjrgarch11))
+jarque.bera.test(residuals(arma101_gjrgarch11))
 
 arma503_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(5, 3)),
                                       variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
 arma503_egarch53 <- ugarchfit(spec = arma503_egarch53_spec, data = BABA_logret,
                                 out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma503_egarch53))
+jarque.bera.test(residuals(arma503_egarch53))
 
 arma403_egarch43_spec <- ugarchspec(mean.model = list(armaOrder = c(4, 3)),
                                     variance.model = list(garchOrder = c(4, 3), model  = "eGARCH"))
 arma403_egarch43 <- ugarchfit(spec = arma403_egarch43_spec, data = BABA_logret,
                               out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma403_egarch43))
+jarque.bera.test(residuals(arma403_egarch43))
 
 ic_comp_table <- data.frame(cbind(infocriteria(arma000_garch11), infocriteria(arma000_garch14), 
                                   infocriteria(arma202_garch11), infocriteria(arma202_garch14), 
@@ -496,15 +514,7 @@ ic_comp_table <- data.frame(cbind(infocriteria(arma000_garch11), infocriteria(ar
                                   infocriteria(arma503_egarch53), infocriteria(arma403_egarch43)))
 names(ic_comp_table) <- c("000-11", "000-14", "202-11", "202-14", "105-15", "101-11", "101-11gjr", "503-53e", "403-43e")
 ic_comp_table
-# Testing normality 
-jarque.bera.test(arma202_garch11_res)
-par(mfrow = c(1, 2))
-hist(residuals(arma202_garch11), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
-     cex.axis = 0.8)
-box()
-qqnorm(residuals(arma202_garch11), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
-qqline(residuals(arma202_garch11), lwd = 2)
-par(mfrow = c(1, 2))
+
 # Residuals do not eappear to be normally distributed, lets fit residuals having students t-distribution
 
 arma202_garch11_t_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
