@@ -7,6 +7,7 @@
 #install.packages("aTSA")
 #install.packages("rugarch") 
 #install.packages("tseries")
+
 options(scipen = 9999999999)
 library(quantmod)
 library(fGarch)
@@ -17,6 +18,7 @@ library(rugarch)
 library(tseries)
 library(MLmetrics)
 library(stargazer)
+library(ggplot2)
 }
 par_n.ahead = 30
 par_n.roll = 0
@@ -672,7 +674,7 @@ names(ic_comp_table) <- c('ARMA(0,0,0)-GARCH(1,1)','ARMA(0,0,0)-GARCH(1,4)',
                           'ARMA(5,0,3)-eGARCH(5,3)', 'ARMA(4,0,3)-eGARCH(4,3)',
                           'ARMA(2,0,2)-eGARCH(4,4)', 'ARMA(2,0,2)-eGARCH(5,3)',
                           'ARMA(0,0,0)-eGARCH(4,4)', 'ARMA(0,0,0)-eGARCH(5,3)')
-ic_comp_table[1:2,]
+t(ic_comp_table[1:2,])
 min(ic_comp_table['Akaike',])
 min(ic_comp_table['Bayes',])
 stargazer(t(ic_comp_table[1:2,]), summary = FALSE)
@@ -852,8 +854,8 @@ t(MAPE_ret_results)
 
 ##### Stargazer #####
 stargazer(t(MAPE_results))
-
-stargazer::stargazer(arma000_egarch44@fit$matcoef, 
+arma202_egarch44
+stargazer::stargazer(arma000_gjrgarch11@fit$matcoef, 
                      title = "Parameter Estimates of the GARCH(1, 1)") %>% 
   gsub("Std. Error", "Rob. Std. Error", .) %>%  
   gsub("t value", "Rob. t value", .) %>%  
@@ -863,3 +865,42 @@ stargazer::stargazer(arma000_egarch44@fit$matcoef,
   gsub("beta1", "$\\\\beta$", .) %>%
   gsub("shape", "$\\\\nu$", .)  %>%
   writeLines("arch_output.tex")
+
+plot(arma000_gjrgarch11)
+plot(arma202_egarch44)
+plot(forecast_arma000_gjrgarch11)
+plot(forecast_arma202_egarch44)
+
+ggplot()+
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma202_egarch44)), color ="red", linetype = 2) +
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma202_egarch44)+sigma(forecast_arma202_egarch44)), linetype = 2, color = "orange") +
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma202_egarch44)-sigma(forecast_arma202_egarch44)),linetype = 2, color = "orange") +
+  geom_line(aes(x = 1:30, y = tail(BABA_logret,30)), color = "black")+
+  theme_minimal()+
+  ylab("Log-Return")+
+  xlab("Period")
+
+ggplot()+
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma000_gjrgarch11)), color ="red", linetype =2) +
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma000_gjrgarch11)+sigma(forecast_arma000_gjrgarch11)), color = "orange", linetype = 2) +
+  geom_line(aes(x = 1:30, y = fitted(forecast_arma000_gjrgarch11)-sigma(forecast_arma000_gjrgarch11)), color = "orange", linetype = 2) +
+  geom_line(aes(x = 1:30, y = tail(BABA_logret,30)), color = "black")+
+  theme_minimal() +
+  ylab("Log-Return")+
+  xlab("Period")
+
+accuracy_df <- cbind(
+  tail(BABA_logret, 30) < fitted(forecast_arma202_egarch44) + sigma(forecast_arma202_egarch44),
+  tail(BABA_logret, 30) > fitted(forecast_arma202_egarch44) - sigma(forecast_arma202_egarch44)
+  )
+names(accuracy_df) <- c("high", "low")
+if(accuracy_df$high == TRUE & accuracy_df$low == TRUE) {accuracy_df$check <- 1} else {accuracy_df$check <- 0}
+24/30
+
+accuracy_df2 <- cbind(
+  tail(BABA_logret, 30) < fitted(forecast_arma000_gjrgarch11) + sigma(forecast_arma000_gjrgarch11),
+  tail(BABA_logret, 30) > fitted(forecast_arma000_gjrgarch11) - sigma(forecast_arma000_gjrgarch11)
+)
+names(accuracy_df2) <- c("high", "low")
+if(accuracy_df2$high == TRUE & accuracy_df$low == TRUE) {accuracy_df2$check <- 1} else {accuracy_df2$check <- 0}
+26/30
