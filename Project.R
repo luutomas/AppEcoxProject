@@ -82,7 +82,7 @@ for (i in 1:10){
 adf #all lags below confidence level, seems stationary
 
 #examining ACF and PACF
-par(mfrow = c(2, 1))
+par(mfrow = c(1, 2))
 acf(BABA_logret)
 pacf(BABA_logret)
 par(mfrow = c(1,1))
@@ -238,12 +238,67 @@ bestGJRGARCH_BIC <- function(arima_model) {
   return(c(best.p, best.q))
 }
 
-#print(bestGJRGARCH_AIC(arima203)) (1,4)
-#print(bestGJRGARCH_AIC(arima202)) (1,4)
-#print(bestGJRGARCH_BIC(arima203)) (1,1)
-#print(bestGJRGARCH_BIC(arima202)) (1,1)
+#print(bestGJRGARCH_AIC(arima202)) #(1,1)
+#print(bestGJRGARCH_AIC(arima000)) #(1,1)
+#print(bestGJRGARCH_BIC(arima202)) #(1,1)
+#print(bestGJRGARCH_BIC(arima000)) #(1,1)
 
-# We got that the best GARCH values are (1,1) and (1,4)
+bestEGARCH_AIC <- function(arima_model) {
+  p.max <- 5
+  q.max <- 5
+  aic.min <- Inf
+  best.p <- 0
+  best.q <- 0
+  inf.crit <- 0
+  for (i1 in 1:p.max) {
+    for (i2 in 1:q.max) {
+      ourSpec <-
+        ugarchspec(
+          mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+          variance.model = list(garchOrder = c(i1, i2), model = "eGARCH")
+        )
+      fit <- ugarchfit(spec = ourSpec, data = resid(arima_model), solver = "hybrid")
+      inf.crit <- infocriteria(fit)[1]
+      aic.min <- ifelse(inf.crit < aic.min, inf.crit, aic.min)
+      
+      best.p <- ifelse(inf.crit == aic.min, i1, best.p)
+      best.q <- ifelse(inf.crit == aic.min, i2, best.q)
+    }
+  }
+  return(c(best.p, best.q))
+}
+bestEGARCH_BIC <- function(arima_model) {
+  p.max <- 5
+  q.max <- 5
+  bic.min <- Inf
+  best.p <- 0
+  best.q <- 0
+  inf.crit <- 0
+  for (i1 in 1:p.max) {
+    for (i2 in 1:q.max) {
+      ourSpec <-
+        ugarchspec(
+          mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+          variance.model = list(garchOrder = c(i1, i2), model = "eGARCH")
+        )
+      fit <- ugarchfit(spec = ourSpec, data = resid(arima_model), solver = "hybrid")
+      inf.crit <- infocriteria(fit)[2]
+      bic.min <- ifelse(inf.crit < bic.min, inf.crit, bic.min)
+      
+      best.p <- ifelse(inf.crit == bic.min, i1, best.p)
+      best.q <- ifelse(inf.crit == bic.min, i2, best.q)
+    }
+  }
+  return(c(best.p, best.q))
+}
+
+#print(bestEGARCH_AIC(arima202)) #(5,3)
+#print(bestEGARCH_AIC(arima000)) #(4,4)
+#print(bestEGARCH_BIC(arima202)) #(5,3)
+#print(bestEGARCH_BIC(arima000)) #(4,4)
+
+
+
 bestARMA_GARCH_AIC <- function(ts_data) {
   arma_p.max <- 5
   arma_q.max <- 5
@@ -450,6 +505,13 @@ arma202_garch11 <- ugarchfit(spec = arma202_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma202_garch11))
 jarque.bera.test(residuals(arma202_garch11))
+par(mfrow = c(1, 2))
+hist(residuals(arma202_garch11), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma202_garch11), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma202_garch11), lwd = 2)
+par(mfrow = c(1,1))
 
 arma202_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                    variance.model = list(garchOrder = c(1, 4)))
@@ -457,6 +519,13 @@ arma202_garch14 <- ugarchfit(spec = arma202_garch14_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma202_garch14))
 jarque.bera.test(residuals(arma202_garch14))
+par(mfrow = c(1, 2))
+hist(residuals(arma202_garch14), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma202_garch14), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma202_garch14), lwd = 2)
+par(mfrow = c(1,1))
 
 arma000_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 1)))
@@ -464,6 +533,13 @@ arma000_garch11 <- ugarchfit(spec = arma000_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma000_garch11))
 jarque.bera.test(residuals(arma000_garch11))
+par(mfrow = c(1, 2))
+hist(residuals(arma000_garch11), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma000_garch11), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma000_garch11), lwd = 2)
+par(mfrow = c(1,1))
 
 arma000_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 4)))
@@ -471,6 +547,15 @@ arma000_garch14 <- ugarchfit(spec = arma000_garch14_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma000_garch14))
 jarque.bera.test(residuals(arma000_garch14))
+par(mfrow = c(1, 2))
+hist(residuals(arma000_garch14), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma000_garch14), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma000_garch14), lwd = 2)
+par(mfrow = c(2,2))
+Acf(residuals(arma000_garch14))
+Pacf(residuals(arma000_garch14))
 
 arma105_garch15_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 5)),
                                    variance.model = list(garchOrder = c(1, 5)))
@@ -478,6 +563,14 @@ arma105_garch15 <- ugarchfit(spec = arma105_garch15_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma105_garch15))
 jarque.bera.test(residuals(arma105_garch15))
+par(mfrow = c(1, 2))
+hist(residuals(arma105_garch15), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+curve(dnorm(x, mean=mean(residuals(arma105_garch15)), sd=sd(residuals(arma105_garch15))), add=TRUE, col="red")
+qqnorm(residuals(arma105_garch15), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma105_garch15), lwd = 2)
+par(mfrow = c(1,1))
 
 arma101_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                    variance.model = list(garchOrder = c(1, 1)))
@@ -485,6 +578,20 @@ arma101_garch11 <- ugarchfit(spec = arma101_garch11_spec, data = BABA_logret,
                              out.sample = 183,solver = "hybrid")
 Box.test(residuals(arma101_garch11))
 jarque.bera.test(residuals(arma101_garch11))
+
+arma202_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                      variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
+arma202_gjrgarch11 <- ugarchfit(spec = arma202_gjrgarch11_spec, data = BABA_logret,
+                                out.sample = 183)
+Box.test(residuals(arma202_gjrgarch11))
+jarque.bera.test(residuals(arma202_gjrgarch11))
+
+arma000_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
+                                      variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
+arma000_gjrgarch11 <- ugarchfit(spec = arma000_gjrgarch11_spec, data = BABA_logret,
+                                out.sample = 183)
+Box.test(residuals(arma202_gjrgarch11))
+jarque.bera.test(residuals(arma202_gjrgarch11))
 
 arma101_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                       variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
@@ -507,98 +614,205 @@ arma403_egarch43 <- ugarchfit(spec = arma403_egarch43_spec, data = BABA_logret,
 Box.test(residuals(arma403_egarch43))
 jarque.bera.test(residuals(arma403_egarch43))
 
+arma202_egarch44_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                    variance.model = list(garchOrder = c(4, 4), model  = "eGARCH"))
+arma202_egarch44 <- ugarchfit(spec = arma202_egarch44_spec, data = BABA_logret,
+                              out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma202_egarch44))
+jarque.bera.test(residuals(arma202_egarch44))
+par(mfrow = c(1, 2))
+hist(residuals(arma105_garch15), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma105_garch15), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma105_garch15), lwd = 2)
+par(mfrow = c(1,1))
+
+arma202_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
+                                    variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
+arma202_egarch53 <- ugarchfit(spec = arma202_egarch53_spec, data = BABA_logret,
+                              out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma202_egarch53))
+jarque.bera.test(residuals(arma202_egarch53))
+
+arma000_egarch44_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
+                                    variance.model = list(garchOrder = c(4, 4), model  = "eGARCH"))
+arma000_egarch44 <- ugarchfit(spec = arma000_egarch44_spec, data = BABA_logret,
+                              out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma000_egarch44))
+jarque.bera.test(residuals(arma000_egarch44))
+par(mfrow = c(2, 1))
+hist(residuals(arma000_egarch44), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+     cex.axis = 0.8)
+box()
+qqnorm(residuals(arma000_egarch44), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma000_egarch44), lwd = 2)
+par(mfrow = c(1,1))
+
+arma000_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
+                                    variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
+arma000_egarch53 <- ugarchfit(spec = arma000_egarch53_spec, data = BABA_logret,
+                              out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma000_egarch44))
+jarque.bera.test(residuals(arma000_egarch44))
+
+arma000_garch00_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
+                                    variance.model = list(garchOrder = c(0, 0), model  = "sGARCH"))
+arma000_garch00 <- ugarchfit(spec = arma000_egarch00_spec, data = BABA_logret,
+                              out.sample = 183, solver = "hybrid")
+Box.test(residuals(arma000_egarch00))
+jarque.bera.test(residuals(arma000_egarch00))
+
+#
+
 ic_comp_table <- data.frame(cbind(infocriteria(arma000_garch11), infocriteria(arma000_garch14), 
                                   infocriteria(arma202_garch11), infocriteria(arma202_garch14), 
                                   infocriteria(arma105_garch15), infocriteria(arma101_garch11),
                                   infocriteria(arma101_gjrgarch11),
-                                  infocriteria(arma503_egarch53), infocriteria(arma403_egarch43)))
-names(ic_comp_table) <- c("000-11", "000-14", "202-11", "202-14", "105-15", "101-11", "101-11gjr", "503-53e", "403-43e")
-ic_comp_table
+                                  infocriteria(arma000_gjrgarch11),infocriteria(arma202_gjrgarch11),
+                                  infocriteria(arma503_egarch53), infocriteria(arma403_egarch43),
+                                  infocriteria(arma202_egarch44), infocriteria(arma202_egarch53),
+                                  infocriteria(arma000_egarch44), infocriteria(arma000_egarch53)))
+names(ic_comp_table) <- c('ARMA(0,0,0)-GARCH(1,1)','ARMA(0,0,0)-GARCH(1,4)',
+                          'ARMA(2,0,2)-GARCH(1,1)','ARMA(2,0,2)-GARCH(1,4)',
+                          'ARMA(1,0,5)-GARCH(1,5)','ARMA(1,0,1)-GARCH(1,1)',
+                          'ARMA(1,0,1)-gjrGARCH(1,1)',
+                          'ARMA(0,0,0)-gjrGARCH(1,1)','ARMA(2,0,2)-gjrGARCH(1,1)',
+                          'ARMA(5,0,3)-eGARCH(5,3)', 'ARMA(4,0,3)-eGARCH(4,3)',
+                          'ARMA(2,0,2)-eGARCH(4,4)', 'ARMA(2,0,2)-eGARCH(5,3)',
+                          'ARMA(0,0,0)-eGARCH(4,4)', 'ARMA(0,0,0)-eGARCH(5,3)')
+ic_comp_table[1:2,]
+min(ic_comp_table['Akaike',])
+min(ic_comp_table['Bayes',])
+stargazer(t(ic_comp_table[1:2,]), summary = FALSE)
 
-# Residuals do not eappear to be normally distributed, lets fit residuals having students t-distribution
-
-arma202_garch11_t_spec = ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
-                                    variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
-                                    distribution.model = 'std')
-arma202_garch11_t= ugarchfit(arma202_garch11_t_spec, BABA_logret, out.sample = 183)
-arma202_garch11_t
-
-jarque.bera.test(residuals(arma202_garch11_t))
-
-par(mfrow = c(1, 2))
-hist(residuals(arma202_garch11_t), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
-     cex.axis = 0.8)
-box()
-qqnorm(residuals(arma202_garch11_t), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
-qqline(residuals(arma202_garch11_t), lwd = 2)
-
-##### Vůbec to nepomohlo? Smazat? #####
-
-# Lets try to fit models from GARCH family that account for asymmetric responses, namely EGARCH and GJRGARCH
-# ARMA(2,0,2)  EGARCH(1,1)
-arma202_egarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
-                                    variance.model = list(model = "eGARCH",
-                                    garchOrder = c(1, 1))
-                                    )
-
-arma202_egarch11 = ugarchfit(arma202_egarch11_spec, BABA_logret, out.sample = 183)
-arma202_egarch11
-
-arma202_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder=c(2, 2)), 
-                                      variance.model = list(model = "gjrGARCH", 
-                                      garchOrder = c(1, 1)))
-
-arma202_gjrgarch11 = ugarchfit(arma202_gjrgarch11_spec, BABA_logret, out.sample = 183)
-arma202_gjrgarch11
-
-####  Ještě zkusit jiné? EWMA ####
-# Lets compare coefficients from all models
-coefficients <- cbind(coef(arma202_garch11),
-                      coef(arma202_egarch11),
-                      coef(arma202_gjrgarch11))
-
-colnames(coefficients) <- c("ARMA(2,0,2)-GARCH(1,1)","ARMA(2,0,2)-EGARCH(1,1)","ARMA(2,0,2)-GJRGARCH(1,1)")
-coefficients
-# Check which model performs the best according to AIC
-
-##### Možná srovnat i jinak? Jiné kritéria, možné RMSE ####
-performance <- cbind(c(infocriteria(arma202_garch11)["Akaike",],
-                       infocriteria(arma202_egarch11)["Akaike",],
-                       infocriteria(arma202_gjrgarch11)["Akaike",]))
-rownames(performance) <- c("ARMA(2,0,2)-GARCH(1,1)","ARMA(2,0,2)-EGARCH(1,1)","ARMA(2,0,2)-GJRGARCH(1,1)")
-performance
-
-# Dynamic forecast and set the forecast horizon to 6 months
+#### Forecast ####
+forecast_arma000_garch11 = ugarchforecast(arma000_garch11, n.ahead = 1, n.roll = 183)
+forecast_arma000_garch14 = ugarchforecast(arma000_garch14, n.ahead = 1, n.roll = 183)
 forecast_arma202_garch11 = ugarchforecast(arma202_garch11, n.ahead = 1, n.roll = 183)
-forecast_arma202_egarch11 = ugarchforecast(arma202_egarch11, n.ahead = 1, n.roll = 183)
-forecast_arma202_gjrgarch11 = ugarchforecast(arma202_gjrgarch11, n.ahead = 1, n.roll = 183)
+forecast_arma202_garch14 = ugarchforecast(arma202_garch14, n.ahead = 1, n.roll = 183)
+forecast_arma105_garch15 = ugarchforecast(arma105_garch15, n.ahead = 1, n.roll = 183)
+forecast_arma101_garch11 = ugarchforecast(arma101_garch11, n.ahead = 1, n.roll = 183)
 
-par(mfrow = c(1, 1))
-plot.ts(arma202_garch11@fit$sigma, ylab = NA, xlim = c(0, length(BABA_logret)), main = 'Volatility forecasts')
-lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_garch11@forecast$sigma), col = 'red')
-lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_egarch11@forecast$sigma), col = 'blue')
-lines(c(rep(NA, length(BABA_logret) - 183 - 1), forecast_arma202_gjrgarch11@forecast$sigma), col = 'orange')
+forecast_arma101_gjrgarch11  = ugarchforecast(arma101_gjrgarch11 , n.ahead = 1, n.roll = 183)
+forecast_arma000_gjrgarch11  = ugarchforecast(arma000_gjrgarch11, n.ahead = 1, n.roll = 183)
+forecast_arma202_gjrgarch11  = ugarchforecast(arma202_gjrgarch11 , n.ahead = 1, n.roll = 183)
 
-# from the graphs we can see that they produce similar predictions, lets examine MSE
+forecast_arma503_egarch53  = ugarchforecast(arma503_egarch53, n.ahead = 1, n.roll = 183)
+forecast_arma403_egarch43  = ugarchforecast(arma403_egarch43, n.ahead = 1, n.roll = 183)
+forecast_arma202_egarch44  = ugarchforecast(arma202_egarch44, n.ahead = 1, n.roll = 183)
+forecast_arma202_egarch53  = ugarchforecast(arma202_egarch53, n.ahead = 1, n.roll = 183)
+forecast_arma000_egarch44  = ugarchforecast(arma000_egarch44, n.ahead = 1, n.roll = 183)
+forecast_arma000_egarch53  = ugarchforecast(arma000_egarch53, n.ahead = 1, n.roll = 183)
 
+forecast_arma000_garch00 = ugarchforecast(arma000_garch00, n.ahead = 1, n.roll = 183)
 # Bind the prediction vectors
-predictions  <- cbind(forecast_arma202_garch11@forecast$sigmaFor[1:183],
-                      forecast_arma202_egarch11@forecast$sigmaFor[1:183],
-                      forecast_arma202_gjrgarch11@forecast$sigmaFor[1:183])
+predictions  <- cbind(forecast_arma000_garch11@forecast$sigmaFor[1:183],
+                      forecast_arma000_garch14@forecast$sigmaFor[1:183],
+                      forecast_arma202_garch11@forecast$sigmaFor[1:183],
+                      forecast_arma202_garch14@forecast$sigmaFor[1:183],
+                      forecast_arma105_garch15@forecast$sigmaFor[1:183],
+                      forecast_arma101_garch11@forecast$sigmaFor[1:183],
+                      forecast_arma101_gjrgarch11@forecast$sigmaFor[1:183],
+                      forecast_arma000_gjrgarch11@forecast$sigmaFor[1:183],
+                      forecast_arma202_gjrgarch11@forecast$sigmaFor[1:183],
+                      forecast_arma503_egarch53@forecast$sigmaFor[1:183],
+                      forecast_arma403_egarch43@forecast$sigmaFor[1:183],
+                      
+                      forecast_arma202_egarch44@forecast$sigmaFor[1:183],
+                      forecast_arma202_egarch53@forecast$sigmaFor[1:183],
+                      forecast_arma000_egarch44@forecast$sigmaFor[1:183],
+                      forecast_arma000_egarch53@forecast$sigmaFor[1:183],
+                      forecast_arma000_garch00@forecast$sigmaFor[1:183])
+
+
 
 # Calculate volatility proxy
 vol <- (tail(BABA_logret,183))^2
-
 # Proceeds to MSE
-MSE_results <- cbind(MSE(y_pred = predictions[1], y_true = vol),
-                     MSE(y_pred = predictions[2], y_true = vol),
-                     MSE(y_pred = predictions[3], y_true = vol))
+MSE_results <- data.frame(cbind(MSE(y_pred = predictions[1], y_true = vol),
+                                MSE(y_pred = predictions[2], y_true = vol),
+                                MSE(y_pred = predictions[3], y_true = vol),
+                                MSE(y_pred = predictions[4], y_true = vol),
+                                MSE(y_pred = predictions[5], y_true = vol),
+                                MSE(y_pred = predictions[6], y_true = vol),
+                                MSE(y_pred = predictions[7], y_true = vol),
+                                MSE(y_pred = predictions[8], y_true = vol),
+                                MSE(y_pred = predictions[9], y_true = vol),
+                                MSE(y_pred = predictions[10], y_true = vol),
+                                MSE(y_pred = predictions[11], y_true = vol),
+                                MSE(y_pred = predictions[12], y_true = vol),
+                                MSE(y_pred = predictions[13], y_true = vol),
+                                MSE(y_pred = predictions[14], y_true = vol),
+                                MSE(y_pred = predictions[15], y_true = vol),
+                                MSE(y_pred = predictions[16], y_true = vol)))
 
 
-colnames(MSE_results) <- c('ARMA(2,0,2)-GARCH(1,1)',
-                           'ARMA(2,0,2)-eGARCH(1,1)',
-                           'ARMA(2,0,2)-gjrGARCH(1,1)')
+colnames(MSE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
+                           'ARMA(0,0,0)-GARCH(1,4)',
+                           'ARMA(2,0,2)-GARCH(1,1)',
+                           'ARMA(2,0,2)-GARCH(1,4)',
+                           'ARMA(1,0,5)-GARCH(1,5)',
+                           'ARMA(1,0,1)-GARCH(1,1)',
+                           'ARMA(1,0,1)-gjrGARCH(1,1)',
+                           'ARMA(0,0,0)-gjrGARCH(1,1)',
+                           'ARMA(2,0,2)-gjrGARCH(1,1)',
+                           'ARMA(5,0,3)-eGARCH(5,3)',
+                           'ARMA(4,0,3)-eGARCH(4,3)',
+                           'ARMA(2,0,2)-eGARCH(4,4)',
+                           'ARMA(2,0,2)-eGARCH(5,3)',
+                           'ARMA(0,0,0)-eGARCH(4,4)',
+                           'ARMA(0,0,0)-eGARCH(5,3)',
+                           'ARMA(0,0,0ú-GARCH(0,0)')
 
-MSE_results
+MAPE_results <- data.frame(cbind(MAPE(y_pred = predictions[1], y_true = vol),
+                                MAPE(y_pred = predictions[2], y_true = vol),
+                                MAPE(y_pred = predictions[3], y_true = vol),
+                                MAPE(y_pred = predictions[4], y_true = vol),
+                                MAPE(y_pred = predictions[5], y_true = vol),
+                                MAPE(y_pred = predictions[6], y_true = vol),
+                                MAPE(y_pred = predictions[7], y_true = vol),
+                                MAPE(y_pred = predictions[8], y_true = vol),
+                                MAPE(y_pred = predictions[9], y_true = vol),
+                                MAPE(y_pred = predictions[10], y_true = vol),
+                                MAPE(y_pred = predictions[11], y_true = vol),
+                                MAPE(y_pred = predictions[12], y_true = vol),
+                                MAPE(y_pred = predictions[13], y_true = vol),
+                                MAPE(y_pred = predictions[14], y_true = vol),
+                                MAPE(y_pred = predictions[15], y_true = vol),
+                                MAPE(y_pred = predictions[16], y_true = vol)))
 
-# ARMA(2,0,2)-gjrGARCH(1,1) appears to perfor best in terms of mean squared error
+colnames(MAPE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
+                           'ARMA(0,0,0)-GARCH(1,4)',
+                           'ARMA(2,0,2)-GARCH(1,1)',
+                           'ARMA(2,0,2)-GARCH(1,4)',
+                           'ARMA(1,0,5)-GARCH(1,5)',
+                           'ARMA(1,0,1)-GARCH(1,1)',
+                           'ARMA(1,0,1)-gjrGARCH(1,1)',
+                           'ARMA(0,0,0)-gjrGARCH(1,1)',
+                           'ARMA(2,0,2)-gjrGARCH(1,1)',
+                           'ARMA(5,0,3)-eGARCH(5,3)',
+                           'ARMA(4,0,3)-eGARCH(4,3)',
+                           'ARMA(2,0,2)-eGARCH(4,4)',
+                           'ARMA(2,0,2)-eGARCH(5,3)',
+                           'ARMA(0,0,0)-eGARCH(4,4)',
+                           'ARMA(0,0,0)-eGARCH(5,3)',
+                           'ARMA(0,0,0)-GARCH(0,0)')
+MAPE_results <- MAPE_results[,order(MAPE_results)]
+t(MAPE_results)
+#reordering (lowest RMSE on the left)
+MSE_results <- MSE_results[,order(MSE_results)]
+t(MSE_)
+stargazer(t(MSE_results), summary  = FALSE, digits = 10)
+t(MSE_results)[,1] * 1000
+
+stargazer::stargazer(arma000_egarch44@fit$matcoef, 
+                     title = "Parameter Estimates of the GARCH(1, 1)") %>% 
+  gsub("Std. Error", "Rob. Std. Error", .) %>%  
+  gsub("t value", "Rob. t value", .) %>%  
+  gsub("mu", "$\\\\mu$", .) %>%
+  gsub("alpha1", "$\\\\alpha$", .) %>%
+  gsub("omega", "$\\\\omega$", .) %>%  
+  gsub("beta1", "$\\\\beta$", .) %>%
+  gsub("shape", "$\\\\nu$", .)  %>%
+  writeLines("arch_output.tex")
