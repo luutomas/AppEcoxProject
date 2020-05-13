@@ -1,3 +1,4 @@
+{
 #install.packages('devtools')
 #install.packages("quantmod")
 #install.packages("fGarch")
@@ -6,7 +7,7 @@
 #install.packages("aTSA")
 #install.packages("rugarch") 
 #install.packages("tseries")
-
+options(scipen = 9999999999)
 library(quantmod)
 library(fGarch)
 library(repr)
@@ -16,7 +17,50 @@ library(rugarch)
 library(tseries)
 library(MLmetrics)
 library(stargazer)
+}
+par_n.ahead = 30
+par_n.roll = 0
+par_out.sample = 30
 
+##### Getting the stock data for the chosen stock and visual analysis ####
+getSymbols('BABA', src = 'yahoo', return.class = 'xts',from = "2014-09-20",to="2019-12-31")
+head(BABA)
+BABA <- BABA[,"BABA.Close"]
+plot.xts(BABA, ylab = NA) #clearly non-stationary
+
+BABA_logret <- na.omit(diff(log(BABA)))
+
+plot.xts(BABA_logret, ylab = NA)
+hist(BABA_logret,freq=FALSE,breaks=100)
+curve(dnorm(x, mean=mean(BABA_logret), sd=sd(BABA_logret)), add=TRUE, col="red") #seems stationary
+
+adf.test(BABA_logret)
+Box.test(BABA_logret, type = "Ljung-Box")
+kpss.test(BABA_logret)
+adf <- data.frame("lags"=1:10,"p-val"=NA)
+for (i in 1:10){
+  adf[i,"p.val"] =as.numeric(adf.test(BABA_logret, k = i)$p.val)  
+}
+adf #all lags below confidence level, seems stationary
+
+#examining ACF and PACF
+par(mfrow = c(1, 2))
+acf(BABA_logret)
+pacf(BABA_logret)
+par(mfrow = c(1,1))
+
+Box.test(randomNormTS, type = "Ljung")
+# testing joint significance of lags
+LB <- data.frame("lags"=1:10,"p-val"=NA)
+for (i in 1:10){
+  LB[i,"p.val"] = Box.test(BABA_logret, type = "Ljung-Box", lag = i)$p.val
+}
+LB
+# null hypothesis of autocorrelations up to lag k equal zero is very likely to be rjected as shown by LB text
+# From ACF and PACF, LB test, it appears that there is a dependence on lags in both subsamples => proceed to GARCH
+# Unfortunately from ACF and PACF, it is unclear which order of AR or MA should we choose
+# To address this issue, we will use find the minimzed AIC and BIC
+#### ARIMA search ####
 bestARIMA <- function(dat,max_p,max_q, d, const){
   model_config <-c()
   model_AIC <-c()
@@ -58,55 +102,14 @@ bestARIMA <- function(dat,max_p,max_q, d, const){
   df$Ljung_Box_pval <- as.numeric(as.character(df$Ljung_Box_pval))
   return(df)
 }
-
-
-##### Getting the stock data for the chosen stock ####
-getSymbols('BABA', src = 'yahoo', return.class = 'xts',from = "2014-09-20",to="2019-12-31")
-head(BABA)
-BABA <- BABA[,"BABA.Close"]
-plot.xts(BABA, ylab = NA) #clearly non-stationary
-
-BABA_logret <- na.omit(diff(log(BABA)))
-
-plot.xts(BABA_logret, ylab = NA)
-hist(BABA_logret,freq=FALSE,breaks=100)
-curve(dnorm(x, mean=mean(BABA_logret), sd=sd(BABA_logret)), add=TRUE, col="red") #seems stationary
-
-adf.test(BABA_logret)
-Box.test(BABA_logret, type = "Ljung-Box")
-kpss.test(BABA_logret)
-adf <- data.frame("lags"=1:10,"p-val"=NA)
-for (i in 1:10){
-  adf[i,"p.val"] =as.numeric(adf.test(BABA_logret, k = i)$p.val)  
-}
-adf #all lags below confidence level, seems stationary
-
-#examining ACF and PACF
-par(mfrow = c(1, 2))
-acf(BABA_logret)
-pacf(BABA_logret)
-par(mfrow = c(1,1))
-
-Box.test(randomNormTS, type = "Ljung")
-# testing joint significance of lags
-LB <- data.frame("lags"=1:10,"p-val"=NA)
-for (i in 1:10){
-  LB[i,"p.val"] = Box.test(BABA_logret, type = "Ljung-Box", lag = i)$p.val
-}
-LB
-# null hypothesis of autocorrelations up to lag k equal zero is very likely to be rjected as shown by LB text
-# From ACF and PACF, LB test, it appears that there is a dependence on lags in both subsamples => proceed to GARCH
-# Unfortunately from ACF and PACF, it is unclear which order of AR or MA should we choose
-# To address this issue, we will use find the minimzed AIC and BIC
-
-bestARIMA_results <- bestARIMA(BABA_logret, 10, 10, 0, FALSE)
+#bestARIMA_results <- bestARIMA(BABA_logret, 10, 10, 0, FALSE)
 
 head(bestARIMA_results[order(bestARIMA_results$model_AIC),],5)
 head(bestARIMA_results[order(bestARIMA_results$model_BIC),],5)
 # AIC (2,0,2), BIC (0,0,0)
 
-auto.arima(BABA_logret,ic ="aic", stepwise = FALSE)
-auto.arima(BABA_logret,ic ="bic", stepwise = FALSE)
+#auto.arima(BABA_logret,ic ="aic", stepwise = FALSE)
+#auto.arima(BABA_logret,ic ="bic", stepwise = FALSE)
 # We also used out-of-the-box function, which finds the best order by minimizing information criterion
 # AIC (2,0,3), BIC (0,0,0)
 
@@ -121,17 +124,7 @@ arch.test(arima000)
 
 # Homoskedastic residuals rejected => focus on conditional volatility => GARCH family models
 
-#### Conditional Volatility ####
-# Save last 183 observations (6 months) for out of sample forecasting
-arma202_garch11_spec = ugarchspec(mean.model = list(armaOrder = c(2, 2)),
-                                  variance.model = list(garchOrder = c(1, 1)))
-arma202_garch11 = ugarchfit(spec = arma202_garch11_spec,data = residuals(arima202),
-                            out.sample = 183,solver = "hybrid"
-                          )
-
-arma202_garch11_fc <- ugarchforecast(arma202_garch11, n.roll = 183, n.ahead = 1)
-str(arma202_garch11_fc)
-
+#### GARCH search ####
 # From the results, we can see that all coefficients except mean are significant 
 # and null hypothesis of no autocorrelation can not be rejected (LB test)
 
@@ -296,8 +289,6 @@ bestEGARCH_BIC <- function(arima_model) {
 #print(bestEGARCH_AIC(arima000)) #(4,4)
 #print(bestEGARCH_BIC(arima202)) #(5,3)
 #print(bestEGARCH_BIC(arima000)) #(4,4)
-
-
 
 bestARMA_GARCH_AIC <- function(ts_data) {
   arma_p.max <- 5
@@ -494,15 +485,15 @@ bestARMA_eGARCH_BIC <- function(ts_data) {
   return(c(arma_best.p, arma_best.q, garch_best.p, garch_best.q))
 }
 
-bestARMA_eGARCH_AIC(BABA_logret) # 5 3 5 3
-bestARMA_eGARCH_BIC(BABA_logret) # 4 3 4 3
+#bestARMA_eGARCH_AIC(BABA_logret) # 5 3 5 3
+#bestARMA_eGARCH_BIC(BABA_logret) # 4 3 4 3
 
 
-#
+#### ARMA - GARCH Specs ####
 arma202_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                   variance.model = list(garchOrder = c(1, 1)))
 arma202_garch11 <- ugarchfit(spec = arma202_garch11_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma202_garch11))
 jarque.bera.test(residuals(arma202_garch11))
 par(mfrow = c(1, 2))
@@ -516,7 +507,7 @@ par(mfrow = c(1,1))
 arma202_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                    variance.model = list(garchOrder = c(1, 4)))
 arma202_garch14 <- ugarchfit(spec = arma202_garch14_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma202_garch14))
 jarque.bera.test(residuals(arma202_garch14))
 par(mfrow = c(1, 2))
@@ -530,7 +521,7 @@ par(mfrow = c(1,1))
 arma000_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 1)))
 arma000_garch11 <- ugarchfit(spec = arma000_garch11_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma000_garch11))
 jarque.bera.test(residuals(arma000_garch11))
 par(mfrow = c(1, 2))
@@ -544,7 +535,7 @@ par(mfrow = c(1,1))
 arma000_garch14_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                    variance.model = list(garchOrder = c(1, 4)))
 arma000_garch14 <- ugarchfit(spec = arma000_garch14_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma000_garch14))
 jarque.bera.test(residuals(arma000_garch14))
 par(mfrow = c(1, 2))
@@ -560,7 +551,7 @@ Pacf(residuals(arma000_garch14))
 arma105_garch15_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 5)),
                                    variance.model = list(garchOrder = c(1, 5)))
 arma105_garch15 <- ugarchfit(spec = arma105_garch15_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma105_garch15))
 jarque.bera.test(residuals(arma105_garch15))
 par(mfrow = c(1, 2))
@@ -575,73 +566,73 @@ par(mfrow = c(1,1))
 arma101_garch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                    variance.model = list(garchOrder = c(1, 1)))
 arma101_garch11 <- ugarchfit(spec = arma101_garch11_spec, data = BABA_logret,
-                             out.sample = 183,solver = "hybrid")
+                             out.sample = par_out.sample,solver = "hybrid")
 Box.test(residuals(arma101_garch11))
 jarque.bera.test(residuals(arma101_garch11))
 
 arma202_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                       variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
 arma202_gjrgarch11 <- ugarchfit(spec = arma202_gjrgarch11_spec, data = BABA_logret,
-                                out.sample = 183)
+                                out.sample = par_out.sample)
 Box.test(residuals(arma202_gjrgarch11))
 jarque.bera.test(residuals(arma202_gjrgarch11))
 
 arma000_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                       variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
 arma000_gjrgarch11 <- ugarchfit(spec = arma000_gjrgarch11_spec, data = BABA_logret,
-                                out.sample = 183)
+                                out.sample = par_out.sample)
 Box.test(residuals(arma202_gjrgarch11))
 jarque.bera.test(residuals(arma202_gjrgarch11))
 
 arma101_gjrgarch11_spec <- ugarchspec(mean.model = list(armaOrder = c(1, 1)),
                                       variance.model = list(garchOrder = c(1, 1), model  = "gjrGARCH"))
 arma101_gjrgarch11 <- ugarchfit(spec = arma101_gjrgarch11_spec, data = BABA_logret,
-                             out.sample = 183)
+                             out.sample = par_out.sample)
 Box.test(residuals(arma101_gjrgarch11))
 jarque.bera.test(residuals(arma101_gjrgarch11))
 
 arma503_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(5, 3)),
                                       variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
 arma503_egarch53 <- ugarchfit(spec = arma503_egarch53_spec, data = BABA_logret,
-                                out.sample = 183, solver = "hybrid")
+                                out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma503_egarch53))
 jarque.bera.test(residuals(arma503_egarch53))
 
 arma403_egarch43_spec <- ugarchspec(mean.model = list(armaOrder = c(4, 3)),
                                     variance.model = list(garchOrder = c(4, 3), model  = "eGARCH"))
 arma403_egarch43 <- ugarchfit(spec = arma403_egarch43_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
-Box.test(residuals(arma403_egarch43))
+                              out.sample = par_out.sample, solver = "hybrid")
+Box.test(residuals(arma403_egarch43), type  ="L")
 jarque.bera.test(residuals(arma403_egarch43))
 
 arma202_egarch44_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                     variance.model = list(garchOrder = c(4, 4), model  = "eGARCH"))
 arma202_egarch44 <- ugarchfit(spec = arma202_egarch44_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
+                              out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma202_egarch44))
 jarque.bera.test(residuals(arma202_egarch44))
-par(mfrow = c(1, 2))
-hist(residuals(arma105_garch15), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
+par(mfrow = c(1, 1))
+hist(residuals(arma202_egarch44), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
      cex.axis = 0.8)
 box()
-qqnorm(residuals(arma105_garch15), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
-qqline(residuals(arma105_garch15), lwd = 2)
+qqnorm(residuals(arma202_egarch44), cex.main = 0.8, cex.lab = 0.8, cex.axis = 0.8) 
+qqline(residuals(arma202_egarch44), lwd = 2)
 par(mfrow = c(1,1))
 
 arma202_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(2, 2)),
                                     variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
 arma202_egarch53 <- ugarchfit(spec = arma202_egarch53_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
+                              out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma202_egarch53))
 jarque.bera.test(residuals(arma202_egarch53))
 
 arma000_egarch44_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                     variance.model = list(garchOrder = c(4, 4), model  = "eGARCH"))
 arma000_egarch44 <- ugarchfit(spec = arma000_egarch44_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
+                              out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma000_egarch44))
 jarque.bera.test(residuals(arma000_egarch44))
-par(mfrow = c(2, 1))
+par(mfrow = c(1, 1))
 hist(residuals(arma000_egarch44), breaks = 30, main ='Histogram', cex.main = 0.8, cex.lab = 0.8, xlab = NA,
      cex.axis = 0.8)
 box()
@@ -652,14 +643,14 @@ par(mfrow = c(1,1))
 arma000_egarch53_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                     variance.model = list(garchOrder = c(5, 3), model  = "eGARCH"))
 arma000_egarch53 <- ugarchfit(spec = arma000_egarch53_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
+                              out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma000_egarch44))
 jarque.bera.test(residuals(arma000_egarch44))
 
 arma000_garch00_spec <- ugarchspec(mean.model = list(armaOrder = c(0, 0)),
                                     variance.model = list(garchOrder = c(0, 0), model  = "sGARCH"))
-arma000_garch00 <- ugarchfit(spec = arma000_egarch00_spec, data = BABA_logret,
-                              out.sample = 183, solver = "hybrid")
+arma000_garch00 <- ugarchfit(spec = arma000_garch00_spec, data = BABA_logret,
+                              out.sample = par_out.sample, solver = "hybrid")
 Box.test(residuals(arma000_egarch00))
 jarque.bera.test(residuals(arma000_egarch00))
 
@@ -687,65 +678,83 @@ min(ic_comp_table['Bayes',])
 stargazer(t(ic_comp_table[1:2,]), summary = FALSE)
 
 #### Forecast ####
-forecast_arma000_garch11 = ugarchforecast(arma000_garch11, n.ahead = 1, n.roll = 183)
-forecast_arma000_garch14 = ugarchforecast(arma000_garch14, n.ahead = 1, n.roll = 183)
-forecast_arma202_garch11 = ugarchforecast(arma202_garch11, n.ahead = 1, n.roll = 183)
-forecast_arma202_garch14 = ugarchforecast(arma202_garch14, n.ahead = 1, n.roll = 183)
-forecast_arma105_garch15 = ugarchforecast(arma105_garch15, n.ahead = 1, n.roll = 183)
-forecast_arma101_garch11 = ugarchforecast(arma101_garch11, n.ahead = 1, n.roll = 183)
+forecast_arma000_garch11 = ugarchforecast(arma000_garch11, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma000_garch14 = ugarchforecast(arma000_garch14, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma202_garch11 = ugarchforecast(arma202_garch11, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma202_garch14 = ugarchforecast(arma202_garch14, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma105_garch15 = ugarchforecast(arma105_garch15, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma101_garch11 = ugarchforecast(arma101_garch11, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
 
-forecast_arma101_gjrgarch11  = ugarchforecast(arma101_gjrgarch11 , n.ahead = 1, n.roll = 183)
-forecast_arma000_gjrgarch11  = ugarchforecast(arma000_gjrgarch11, n.ahead = 1, n.roll = 183)
-forecast_arma202_gjrgarch11  = ugarchforecast(arma202_gjrgarch11 , n.ahead = 1, n.roll = 183)
+forecast_arma101_gjrgarch11  = ugarchforecast(arma101_gjrgarch11 , n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma000_gjrgarch11  = ugarchforecast(arma000_gjrgarch11, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma202_gjrgarch11  = ugarchforecast(arma202_gjrgarch11 , n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
 
-forecast_arma503_egarch53  = ugarchforecast(arma503_egarch53, n.ahead = 1, n.roll = 183)
-forecast_arma403_egarch43  = ugarchforecast(arma403_egarch43, n.ahead = 1, n.roll = 183)
-forecast_arma202_egarch44  = ugarchforecast(arma202_egarch44, n.ahead = 1, n.roll = 183)
-forecast_arma202_egarch53  = ugarchforecast(arma202_egarch53, n.ahead = 1, n.roll = 183)
-forecast_arma000_egarch44  = ugarchforecast(arma000_egarch44, n.ahead = 1, n.roll = 183)
-forecast_arma000_egarch53  = ugarchforecast(arma000_egarch53, n.ahead = 1, n.roll = 183)
+forecast_arma503_egarch53  = ugarchforecast(arma503_egarch53, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma403_egarch43  = ugarchforecast(arma403_egarch43, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma202_egarch44  = ugarchforecast(arma202_egarch44, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma202_egarch53  = ugarchforecast(arma202_egarch53, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma000_egarch44  = ugarchforecast(arma000_egarch44, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+forecast_arma000_egarch53  = ugarchforecast(arma000_egarch53, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
 
-forecast_arma000_garch00 = ugarchforecast(arma000_garch00, n.ahead = 1, n.roll = 183)
+forecast_arma000_garch00 = ugarchforecast(arma000_garch00, n.ahead = par_n.ahead, n.roll = par_n.roll, out.sample = par_out.sample)
+#### Comparison of Prediction ####
 # Bind the prediction vectors
-predictions  <- cbind(forecast_arma000_garch11@forecast$sigmaFor[1:183],
-                      forecast_arma000_garch14@forecast$sigmaFor[1:183],
-                      forecast_arma202_garch11@forecast$sigmaFor[1:183],
-                      forecast_arma202_garch14@forecast$sigmaFor[1:183],
-                      forecast_arma105_garch15@forecast$sigmaFor[1:183],
-                      forecast_arma101_garch11@forecast$sigmaFor[1:183],
-                      forecast_arma101_gjrgarch11@forecast$sigmaFor[1:183],
-                      forecast_arma000_gjrgarch11@forecast$sigmaFor[1:183],
-                      forecast_arma202_gjrgarch11@forecast$sigmaFor[1:183],
-                      forecast_arma503_egarch53@forecast$sigmaFor[1:183],
-                      forecast_arma403_egarch43@forecast$sigmaFor[1:183],
+predictions_sigma  <- cbind(forecast_arma000_garch11@forecast$sigmaFor,
+                      forecast_arma000_garch14@forecast$sigmaFor,
+                      forecast_arma202_garch11@forecast$sigmaFor,
+                      forecast_arma202_garch14@forecast$sigmaFor,
+                      forecast_arma105_garch15@forecast$sigmaFor,
+                      forecast_arma101_garch11@forecast$sigmaFor,
+                      forecast_arma101_gjrgarch11@forecast$sigmaFor,
+                      forecast_arma000_gjrgarch11@forecast$sigmaFor,
+                      forecast_arma202_gjrgarch11@forecast$sigmaFor,
+                      forecast_arma503_egarch53@forecast$sigmaFor,
+                      forecast_arma403_egarch43@forecast$sigmaFor,
                       
-                      forecast_arma202_egarch44@forecast$sigmaFor[1:183],
-                      forecast_arma202_egarch53@forecast$sigmaFor[1:183],
-                      forecast_arma000_egarch44@forecast$sigmaFor[1:183],
-                      forecast_arma000_egarch53@forecast$sigmaFor[1:183],
-                      forecast_arma000_garch00@forecast$sigmaFor[1:183])
+                      forecast_arma202_egarch44@forecast$sigmaFor,
+                      forecast_arma202_egarch53@forecast$sigmaFor,
+                      forecast_arma000_egarch44@forecast$sigmaFor,
+                      forecast_arma000_egarch53@forecast$sigmaFor,
+                      forecast_arma000_garch00@forecast$sigmaFor)
 
-
+predictions_ret  <- cbind(forecast_arma000_garch11@forecast$seriesFor,
+                      forecast_arma000_garch14@forecast$seriesFor,
+                      forecast_arma202_garch11@forecast$seriesFor,
+                      forecast_arma202_garch14@forecast$seriesFor,
+                      forecast_arma105_garch15@forecast$seriesFor,
+                      forecast_arma101_garch11@forecast$seriesFor,
+                      forecast_arma101_gjrgarch11@forecast$seriesFor,
+                      forecast_arma000_gjrgarch11@forecast$seriesFor,
+                      forecast_arma202_gjrgarch11@forecast$seriesFor,
+                      forecast_arma503_egarch53@forecast$seriesFor,
+                      forecast_arma403_egarch43@forecast$seriesFor,
+                      
+                      forecast_arma202_egarch44@forecast$seriesFor,
+                      forecast_arma202_egarch53@forecast$seriesFor,
+                      forecast_arma000_egarch44@forecast$seriesFor,
+                      forecast_arma000_egarch53@forecast$seriesFor,
+                      forecast_arma000_garch00@forecast$seriesFor)
 
 # Calculate volatility proxy
-vol <- (tail(BABA_logret,183))^2
+vol <- (tail(BABA_logret,par_out.sample))^2
+ret <- tail(BABA_logret,par_out.sample)
 # Proceeds to MSE
-MSE_results <- data.frame(cbind(MSE(y_pred = predictions[1], y_true = vol),
-                                MSE(y_pred = predictions[2], y_true = vol),
-                                MSE(y_pred = predictions[3], y_true = vol),
-                                MSE(y_pred = predictions[4], y_true = vol),
-                                MSE(y_pred = predictions[5], y_true = vol),
-                                MSE(y_pred = predictions[6], y_true = vol),
-                                MSE(y_pred = predictions[7], y_true = vol),
-                                MSE(y_pred = predictions[8], y_true = vol),
-                                MSE(y_pred = predictions[9], y_true = vol),
-                                MSE(y_pred = predictions[10], y_true = vol),
-                                MSE(y_pred = predictions[11], y_true = vol),
-                                MSE(y_pred = predictions[12], y_true = vol),
-                                MSE(y_pred = predictions[13], y_true = vol),
-                                MSE(y_pred = predictions[14], y_true = vol),
-                                MSE(y_pred = predictions[15], y_true = vol),
-                                MSE(y_pred = predictions[16], y_true = vol)))
+MSE_vol_results <- data.frame(cbind(MSE(y_pred = predictions_sigma[,1]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,2]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,3]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,4]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,5]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,6]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,7]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,8]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,9]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,10]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,11]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,12]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,13]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,14]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,15]^2, y_true = vol),
+                                MSE(y_pred = predictions_sigma[,16]^2, y_true = vol)))
 
 
 colnames(MSE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
@@ -763,26 +772,47 @@ colnames(MSE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
                            'ARMA(2,0,2)-eGARCH(5,3)',
                            'ARMA(0,0,0)-eGARCH(4,4)',
                            'ARMA(0,0,0)-eGARCH(5,3)',
-                           'ARMA(0,0,0ú-GARCH(0,0)')
+                           'ARMA(0,0,0)-GARCH(0,0)')
+#reordering (lowest RMSE on the left)
+MSE_vol_results <- MSE_vol_results[,order(MSE_vol_results)]
+t(MSE_vol_results)
+stargazer(t(MSE_vol_results), summary  = FALSE, digits = 10)
 
-MAPE_results <- data.frame(cbind(MAPE(y_pred = predictions[1], y_true = vol),
-                                MAPE(y_pred = predictions[2], y_true = vol),
-                                MAPE(y_pred = predictions[3], y_true = vol),
-                                MAPE(y_pred = predictions[4], y_true = vol),
-                                MAPE(y_pred = predictions[5], y_true = vol),
-                                MAPE(y_pred = predictions[6], y_true = vol),
-                                MAPE(y_pred = predictions[7], y_true = vol),
-                                MAPE(y_pred = predictions[8], y_true = vol),
-                                MAPE(y_pred = predictions[9], y_true = vol),
-                                MAPE(y_pred = predictions[10], y_true = vol),
-                                MAPE(y_pred = predictions[11], y_true = vol),
-                                MAPE(y_pred = predictions[12], y_true = vol),
-                                MAPE(y_pred = predictions[13], y_true = vol),
-                                MAPE(y_pred = predictions[14], y_true = vol),
-                                MAPE(y_pred = predictions[15], y_true = vol),
-                                MAPE(y_pred = predictions[16], y_true = vol)))
+MAPE_vol_results <- data.frame(cbind(MAPE(y_pred = predictions_sigma[,1]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,2]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,3]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,4]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,5]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,6]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,7]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,8]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,9]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,10]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,11]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,12]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,13]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,14]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,15]^2, y_true = vol),
+                                MAPE(y_pred = predictions_sigma[,16]^2, y_true = vol)))
 
-colnames(MAPE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
+MAPE_ret_results <- data.frame(cbind(MAPE(y_pred = predictions_ret[,1], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,2], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,3], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,4], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,5], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,6], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,7], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,8], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,9], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,10], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,11], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,12], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,13], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,14], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,15], y_true = ret),
+                                     MAPE(y_pred = predictions_ret[,16], y_true = ret)))
+
+colnames(MAPE_vol_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
                            'ARMA(0,0,0)-GARCH(1,4)',
                            'ARMA(2,0,2)-GARCH(1,1)',
                            'ARMA(2,0,2)-GARCH(1,4)',
@@ -798,13 +828,30 @@ colnames(MAPE_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
                            'ARMA(0,0,0)-eGARCH(4,4)',
                            'ARMA(0,0,0)-eGARCH(5,3)',
                            'ARMA(0,0,0)-GARCH(0,0)')
-MAPE_results <- MAPE_results[,order(MAPE_results)]
-t(MAPE_results)
-#reordering (lowest RMSE on the left)
-MSE_results <- MSE_results[,order(MSE_results)]
-t(MSE_)
-stargazer(t(MSE_results), summary  = FALSE, digits = 10)
-t(MSE_results)[,1] * 1000
+
+colnames(MAPE_ret_results) <- c('ARMA(0,0,0)-GARCH(1,1)',
+                                'ARMA(0,0,0)-GARCH(1,4)',
+                                'ARMA(2,0,2)-GARCH(1,1)',
+                                'ARMA(2,0,2)-GARCH(1,4)',
+                                'ARMA(1,0,5)-GARCH(1,5)',
+                                'ARMA(1,0,1)-GARCH(1,1)',
+                                'ARMA(1,0,1)-gjrGARCH(1,1)',
+                                'ARMA(0,0,0)-gjrGARCH(1,1)',
+                                'ARMA(2,0,2)-gjrGARCH(1,1)',
+                                'ARMA(5,0,3)-eGARCH(5,3)',
+                                'ARMA(4,0,3)-eGARCH(4,3)',
+                                'ARMA(2,0,2)-eGARCH(4,4)',
+                                'ARMA(2,0,2)-eGARCH(5,3)',
+                                'ARMA(0,0,0)-eGARCH(4,4)',
+                                'ARMA(0,0,0)-eGARCH(5,3)',
+                                'ARMA(0,0,0)-GARCH(0,0)')
+MAPE_vol_results <- MAPE_vol_results[,order(MAPE_vol_results)]
+t(MAPE_vol_results)
+MAPE_ret_results <- MAPE_ret_results[,order(MAPE_ret_results)]
+t(MAPE_ret_results)
+
+##### Stargazer #####
+stargazer(t(MAPE_results))
 
 stargazer::stargazer(arma000_egarch44@fit$matcoef, 
                      title = "Parameter Estimates of the GARCH(1, 1)") %>% 
